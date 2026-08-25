@@ -14,6 +14,7 @@ from .maze import MazeSample_PointMass, MazeSample_Ant, MazeSample_Quadruped
 # utils/export_maze_xml.py, so this import is a no-op until they exist. One class for
 # all 100 morphologies, selected with `--env-args walker <name>`.
 from .unimal_maze import MazeEnd_Unimal, MazeSample_Unimal
+from .unimal_maze import MazeEnd_PointMass_UMaze, MazeSample_PointMass_UMaze
 
 from .peg_insertion import Insert_Sawyer5Arm1, Insert_Sawyer5Arm2, Insert_Sawyer6Arm1
 
