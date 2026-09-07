@@ -473,7 +473,6 @@ class SAC(OffPolicyRLModel):
 
                 if step % self.train_freq == 0:
                     callback.on_rollout_end()
-                    t0 = time.time()
 
                     mb_infos_vals = []
                     # Update policy, critics and target networks
@@ -496,10 +495,6 @@ class SAC(OffPolicyRLModel):
                     # Log losses and entropy, useful for monitor training
                     if len(mb_infos_vals) > 0:
                         infos_values = np.mean(mb_infos_vals, axis=0)
-
-                    t1 = time.time()
-                    if step > 500:
-                        print("Step Time", t1 - t0)
 
                     callback.on_rollout_start()
 
