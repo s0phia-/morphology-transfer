@@ -88,9 +88,15 @@ class MazeEnd_Unimal(Env):
     SPARSE_REWARD = 100.0
     DIST_REWARD = 0.0
     VISUALIZE = True
-    # Non-None pins the class to one asset regardless of --env-args, for agents that
+    # Non-None pins the class to one asset regardless of --walker, for agents that
     # are not one of the exported unimals (see MazeEnd_PointMass_UMaze).
     WALKER_DEFAULT = None
+    # Non-None overrides the manifest's torso_body, for the same reason: the manifest
+    # describes the unimals ("torso/0") and a non-unimal asset keeps its own name.
+    # It has to be a CLASS attribute rather than a post-super assignment - base.Env's
+    # own __init__ calls step() to infer the observation space, and that reaches
+    # torso_xy() long before a subclass constructor resumes.
+    TORSO_BODY = None
 
     def __init__(self, walker=None, asset_dir=None, goal_tolerance=None):
         self.asset_dir = asset_dir or ASSET_DIR
@@ -112,7 +118,7 @@ class MazeEnd_Unimal(Env):
         self.goal_cells = [tuple(c) for c in self.manifest["goal_cells"]]
         self.reset_cells = [tuple(c) for c in self.manifest["reset_cells"]]
         self.floor_top_z = self.manifest["floor_top_z"]
-        self.torso_body = self.manifest["torso_body"]
+        self.torso_body = self.TORSO_BODY or self.manifest["torso_body"]
 
         # Fixed until reset(); seeded RNG does not exist yet at this point (base.Env
         # calls seed() at the end of its own __init__), so the first goal and spawn are
@@ -266,12 +272,8 @@ class MazeEnd_PointMass_UMaze(MazeEnd_Unimal):
     # against the unimals' 0.005, so this is not the same amount of simulated time -
     # which is fine and expected, and is why delta_max is measured in DISTANCE.
     FRAME_SKIP = 3
-
-    def __init__(self, walker=None, asset_dir=None, goal_tolerance=None):
-        super(MazeEnd_PointMass_UMaze, self).__init__(
-            walker=walker, asset_dir=asset_dir, goal_tolerance=goal_tolerance)
-        # The exported asset keeps bot_transfer's own body name.
-        self.torso_body = "torso"
+    # The exported asset keeps bot_transfer's own body name, not the unimals' torso/0.
+    TORSO_BODY = "torso"
 
 
 class MazeSample_PointMass_UMaze(MazeEnd_PointMass_UMaze):
