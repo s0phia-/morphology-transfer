@@ -29,6 +29,14 @@ BASE_ARGS = {
 }
 
 ENV_ARGS = {
+    # Which of the exported unimals MazeEnd_Unimal builds (unimal_maze.py). There is
+    # no per-morphology env CLASS - one class covers all 100 - so without this the
+    # only reachable walker is whichever one the manifest happens to list first, and
+    # "one low level per morphology" is not expressible on the command line at all.
+    # asset_dir picks WHICH maze, one exported directory per map.
+    'walker': str,
+    'asset_dir': str,
+    'goal_tolerance': float,
     'rand_init': boolean,
     'relative_grip_pos': boolean,
     'valid_area': boolean,

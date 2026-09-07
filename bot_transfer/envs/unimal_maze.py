@@ -6,12 +6,14 @@ on, rather than an approximation of it.
 
     # one low level per morphology, imitating a source low level
     python scripts/train.py --alg DSAC --env MazeEnd_Unimal \\
-        --env-args walker floor-1409-0-3-01-15-56-55 \\
-        --env-wrapper L2Low ...
+        --walker floor-1409-0-3-01-15-56-55 \\
+        --env-wrapper L2Low --low-level <the source low level> ...
 
     # one high level, reused across every morphology
-    python scripts/train.py --alg SAC --env MazeEnd_Unimal \\
+    python scripts/train.py --alg SAC --env MazeSample_Unimal \\
         --env-wrapper High --low-level <trained low level> ...
+
+See configs/umaze/ for the three runs end to end.
 
 WHERE THE MODEL FILES COME FROM
 Not built here. graph_transformer's utils/export_maze_xml.py composes them with its own
@@ -60,8 +62,8 @@ class MazeEnd_Unimal(Env):
     """One unimal walker in the graph_transformer maze.
 
     Parameterized by walker name rather than subclassed per morphology: this repo's
-    loader already calls env_cls(**params['env_args']), so `--env-args walker <name>`
-    selects one of the 100 without needing 100 generated classes.
+    loader already calls env_cls(**params['env_args']), so `--walker <name>` selects
+    one of the 100 without needing 100 generated classes.
     """
 
     # X, Y in the plane - the shared skill space every morphology's low level is
