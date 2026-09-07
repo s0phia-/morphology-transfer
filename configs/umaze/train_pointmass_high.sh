@@ -23,4 +23,5 @@ python scripts/train.py \
     --learning-rate 0.0003 \
     --batch-size 256 \
     --layers 256 256 \
-    --timesteps 300000
+    --timesteps 300000 \
+    "$@"

@@ -23,4 +23,5 @@ python scripts/train.py \
     --batch-size 256 \
     --buffer-size 1000000 \
     --layers 256 256 \
-    --timesteps 1000000
+    --timesteps 1000000 \
+    "$@"

@@ -44,4 +44,5 @@ python scripts/train.py \
     --discrim-train-freq 4 \
     --discrim-weight 0.5 \
     --discrim-decay true \
-    --discrim-stop 0.6
+    --discrim-stop 0.6 \
+    "$@"

@@ -31,6 +31,11 @@ DSAC + L2Low per morphology. Same L2Low reward as (1), plus a discriminator rewa
 being indistinguishable from (1) in skill space. One run per walker; 20 of them for the
 sampled set. Then run (2)'s high level on top of each, unchanged.
 
+Every script forwards extra flags to scripts/train.py, and argparse takes the LAST
+occurrence of a repeated flag - so a short smoke run needs no editing:
+
+    bash configs/umaze/train_pointmass_low.sh --timesteps 20000 --eval-freq 5000
+
 ## Numbers that are pinned to graph_transformer, not guessed
 
     --skip 50           HRL.MANAGER_K
