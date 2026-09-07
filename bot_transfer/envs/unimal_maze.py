@@ -30,9 +30,22 @@ WHAT DIFFERS FROM THIS REPO'S OWN MAZE ENVS, AND WHY
 * AGENT_DIM is computed per morphology at construction instead of being a class
   constant. Unimals vary in limb count, so no single number exists - this is the whole
   reason the method needs one low level per morphology.
+* Goals under RANDOM_GOALS are drawn by a port of graph_transformer's own
+  Maze.sample_goal_xy - a continuous point inside a randomly ordered goal cell, held
+  clear of walls, kept at least GOAL_TOLERANCE from the spawn, and required to be in
+  straight-line sight of it. bot_transfer's Maze.sample_goal_pos just relabels a
+  uniformly chosen open cell, which on a map whose cells are mostly goal cells is a
+  materially narrower goal distribution than the one being compared against.
 * The torso body is "torso/0", not "torso".
 * No maze construction in __init__ - the walls are already in the XML. This subclasses
   base.Env directly rather than maze.Maze for that reason.
+
+WHAT STILL DIFFERS ON PURPOSE
+graph_transformer CHAINS goals - reaching one draws another from the agent's new
+position and the episode continues. Here reaching the goal ends the episode, because
+that is the event bot_transfer's High wrapper and its success metric are both defined
+over. So the two agree on where a goal may appear and on what counts as reaching it,
+and disagree on what happens next.
 """
 import json
 import os
@@ -44,16 +57,33 @@ from .base import Env
 ASSET_DIR = os.path.join(os.path.dirname(__file__), "assets", "unimal_umaze")
 
 
+# Everything the env reads out of the manifest. Checked up front so a manifest written
+# by an older export_maze_xml.py fails here, naming what is missing, rather than as a
+# KeyError somewhere inside goal sampling several thousand steps into a run.
+REQUIRED_MANIFEST_KEYS = (
+    "walkers", "nrows", "ncols", "cell_size", "goal_cells", "reset_cells",
+    "wall_cells", "goal_tolerance", "goal_wall_clearance", "goal_min_distance",
+    "floor_top_z", "torso_body",
+)
+
+_REGENERATE = ("regenerate them from the graph_transformer repo:\n"
+               "  python utils/export_maze_xml.py --cfg <config> --out-dir {}")
+
+
 def _load_manifest(asset_dir):
     path = os.path.join(asset_dir, "manifest.json")
     if not os.path.exists(path):
-        raise IOError(
-            "No manifest.json in {} - generate the assets first from the "
-            "graph_transformer repo:\n"
-            "  python utils/export_maze_xml.py --cfg <config> --out-dir {}".format(
-                asset_dir, asset_dir))
+        raise IOError(("No manifest.json in {} - " + _REGENERATE).format(
+            asset_dir, asset_dir))
     with open(path) as f:
-        return json.load(f)
+        manifest = json.load(f)
+
+    missing = [k for k in REQUIRED_MANIFEST_KEYS if k not in manifest]
+    if missing:
+        raise IOError(("manifest.json in {} is missing {} - it predates a change to "
+                       "what this env needs, so " + _REGENERATE).format(
+                           asset_dir, ", ".join(missing), asset_dir))
+    return manifest
 
 
 class MazeEnd_Unimal(Env):
@@ -109,15 +139,21 @@ class MazeEnd_Unimal(Env):
                                else self.manifest["goal_tolerance"])
         self.goal_cells = [tuple(c) for c in self.manifest["goal_cells"]]
         self.reset_cells = [tuple(c) for c in self.manifest["reset_cells"]]
+        # A set, not a list: is_open is called ~64 times per cell crossed by every
+        # line-of-sight test, which is the inner loop of goal sampling.
+        self.wall_cells = set(tuple(c) for c in self.manifest["wall_cells"])
+        self.goal_wall_clearance = self.manifest["goal_wall_clearance"]
+        self.goal_min_distance = self.manifest["goal_min_distance"]
         self.floor_top_z = self.manifest["floor_top_z"]
         self.torso_body = self.manifest["torso_body"]
 
         # Fixed until reset(); seeded RNG does not exist yet at this point (base.Env
         # calls seed() at the end of its own __init__), so the first goal and spawn are
-        # deterministic and reset() immediately replaces them.
-        self._goal_cell = self.goal_cells[0]
+        # deterministic and reset() replaces the spawn - and, under RANDOM_GOALS, the
+        # goal too. With RANDOM_GOALS off this centre IS the goal for the whole run,
+        # which is what MazeEnd_* means throughout this repo.
         self._spawn_cell = self.reset_cells[0]
-        self.center_goal = np.array(self.grid_to_xy(*self._goal_cell))
+        self.center_goal = np.array(self.grid_to_xy(*self.goal_cells[0]))
 
         model_path = os.path.join(self.asset_dir, "{}.xml".format(walker))
         # base.Env.__init__ builds the sim, then calls step() once with a sampled
@@ -144,22 +180,116 @@ class MazeEnd_Unimal(Env):
     def torso_xy(self):
         return self.get_body_com(self.torso_body)[:2]
 
-    def sample_goal_pos(self):
-        """Pick this episode's goal cell, never the one the agent is spawning in.
+    def xy_to_grid(self, x, y):
+        col = int(round(x / self.cell_size + (self.ncols - 1) / 2.0))
+        row = int(round((self.nrows - 1) / 2.0 - y / self.cell_size))
+        return row, col
 
-        graph_transformer excludes the agent's own cell for the same reason: both it and
-        the spawn return the exact cell centre, so a goal sampled onto the spawn cell
-        starts already reached and pays out for nothing. Without the exclusion that is
-        1 episode in 9 on this map.
+    def is_open(self, x, y):
+        """Is (x, y) on traversable floor? Walls only - a step cell counts as open
+        here exactly as it does over there, since a step is bumpy floor rather than a
+        barrier and nothing about goal placement should treat it as one.
+        """
+        row, col = self.xy_to_grid(x, y)
+        if row < 0 or row >= self.nrows or col < 0 or col >= self.ncols:
+            return False
+        return (row, col) not in self.wall_cells
+
+    def _is_open_with_clearance(self, x, y, clearance):
+        """is_open, plus the same check at all 8 compass offsets of `clearance`.
+
+        A point can be on open floor and still sit close enough to a cell edge that the
+        goal marker sphere overlaps the wall next door - a single-point test cannot see
+        that, since the marker has physical extent and the point does not.
+        """
+        if not self.is_open(x, y):
+            return False
+        offsets = (
+            (-clearance, 0), (clearance, 0), (0, -clearance), (0, clearance),
+            (-clearance, -clearance), (-clearance, clearance),
+            (clearance, -clearance), (clearance, clearance),
+        )
+        return all(self.is_open(x + dx, y + dy) for dx, dy in offsets)
+
+    def _has_line_of_sight(self, a, b, samples_per_cell=64):
+        """True if the straight segment a->b stays clear of walls.
+
+        Walls occupy whole cells, so sampling the segment finely enough to land in
+        every cell it crosses is exact for this geometry - but a bare is_open() sample
+        still lets a segment clip a wall CORNER between samples, so each sample carries
+        the same clearance goal placement uses. Samples within `clearance` of the
+        ORIGIN are exempt: the agent legitimately ends up pressed against a wall, and
+        holding its own position to the placement clearance makes every candidate fail.
+        """
+        a = np.asarray(a, dtype=np.float64)
+        b = np.asarray(b, dtype=np.float64)
+        clearance = self.goal_wall_clearance
+        dist = np.linalg.norm(b - a)
+        n = max(1, int(samples_per_cell * dist / self.cell_size))
+        for k in range(n + 1):
+            t = k / float(n)
+            p = a + (b - a) * t
+            if t * dist < clearance:
+                if not self.is_open(p[0], p[1]):
+                    return False
+            elif not self._is_open_with_clearance(p[0], p[1], clearance):
+                return False
+        return True
+
+    def sample_goal_xy(self, origin_xy, tries_per_cell=8):
+        """Uniform over open floor anywhere in the maze, restricted to positions
+        visible from `origin_xy` in a straight line.
+
+        Ported from graph_transformer's Maze.sample_goal_xy. A CONTINUOUS point inside
+        a goal cell, not the cell centre: matching the distribution is the whole point
+        of this env, and on a map where most cells are goal cells the difference is the
+        difference between 9 possible goals and a continuum.
+
+        Candidate cells are enumerated in random order rather than rejection-sampled
+        from the whole maze, so this cannot fail when only a few cells are visible (in
+        a corridor, typically just the rest of that corridor). Requirements then
+        weaken in three stages, because sampling must never raise: a suboptimal goal
+        costs one episode, an exception costs a run that may be hours in.
+        """
+        origin = np.asarray(origin_xy, dtype=np.float64)
+        clearance = self.goal_wall_clearance
+        # Raised to the tolerance so a goal is never already reached when sampled.
+        min_dist = max(self.goal_min_distance, self.goal_tolerance)
+        half = self.cell_size / 2.0 - clearance
+
+        order = self.np_random.permutation(len(self.goal_cells))
+        for require_los, require_min_dist in ((True, True), (True, False),
+                                              (False, False)):
+            for idx in order:
+                row, col = self.goal_cells[idx]
+                cx, cy = self.grid_to_xy(row, col)
+                for _ in range(tries_per_cell):
+                    candidate = np.array(
+                        [cx + self.np_random.uniform(-half, half),
+                         cy + self.np_random.uniform(-half, half)],
+                        dtype=np.float64)
+                    if require_min_dist and (
+                            np.linalg.norm(candidate - origin) < min_dist):
+                        continue
+                    if not self._is_open_with_clearance(
+                            candidate[0], candidate[1], clearance):
+                        continue
+                    if require_los and not self._has_line_of_sight(
+                            origin, candidate):
+                        continue
+                    return candidate
+        # Last resort: the centre of any open goal cell. On the floor and clear of
+        # walls, even if not visible from wherever the agent happens to be.
+        row, col = self.goal_cells[self.np_random.randint(len(self.goal_cells))]
+        return np.array(self.grid_to_xy(row, col), dtype=np.float64)
+
+    def sample_goal_pos(self):
+        """This episode's goal, drawn from the spawn - the same origin
+        graph_transformer's MazeTask.reset_model passes (its spawn_xy).
         """
         if not self.RANDOM_GOALS:
             return
-        candidates = [c for c in self.goal_cells if c != self._spawn_cell]
-        if not candidates:
-            raise ValueError("no goal cell other than the spawn cell {}".format(
-                self._spawn_cell))
-        self._goal_cell = candidates[self.np_random.randint(len(candidates))]
-        self.center_goal = np.array(self.grid_to_xy(*self._goal_cell))
+        self.center_goal = self.sample_goal_xy(self.grid_to_xy(*self._spawn_cell))
 
     def sample_spawn_pos(self):
         return self.reset_cells[self.np_random.randint(len(self.reset_cells))]
