@@ -5,7 +5,10 @@
 # sparse +100. MazeSample (not MazeEnd) so the goal is redrawn every episode.
 #
 # --low-level is a path under data/ (or an absolute one); fill in what step 1 wrote.
-LOW_LEVEL=${1:?usage: $0 <path to step 1 low level, e.g. 09_07_26/MazeEnd_PointMass_UMaze_L2Low_SAC_s1409_0>}
+LOW_LEVEL=${1:?usage: $0 <path to step 1 low level, e.g. 09_08_26/MazeEnd_PointMass_UMaze_L2Low_SAC_s1409_0> [extra train.py flags]}
+# Consumed here, so the trailing "$@" forwards only what came AFTER it -
+# train.py takes no positional arguments and rejects the leftover.
+shift
 
 python scripts/train.py \
     --alg SAC \

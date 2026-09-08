@@ -10,8 +10,10 @@
 #
 # Run once per morphology. --name is what keeps them apart - without it every walker
 # writes MazeEnd_Unimal_L2Low_DSAC_<n> and the walker is nowhere in the path.
-WALKER=${1:?usage: $0 <walker name> <path to step 1 low level>}
-LOW_LEVEL=${2:?usage: $0 <walker name> <path to step 1 low level>}
+WALKER=${1:?usage: $0 <walker name> <path to step 1 low level> [extra train.py flags]}
+LOW_LEVEL=${2:?usage: $0 <walker name> <path to step 1 low level> [extra train.py flags]}
+# Both consumed, so the trailing "$@" forwards only what came after them.
+shift 2
 
 python scripts/train.py \
     --alg DSAC \
