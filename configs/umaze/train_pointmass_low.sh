@@ -8,7 +8,7 @@ python scripts/train.py \
     --env MazeEnd_PointMass_UMaze \
     --env-wrapper L2Low \
     --seed 1409 \
-    --delta-max 4.0 4.0 \
+    --delta-max 2.0 2.0 \
     --epsilon 0.45 \
     --sparse-reward 25 \
     --reward-scale 0.1 \

@@ -15,7 +15,7 @@ python scripts/train.py \
     --best true \
     --skip 50 \
     --time-limit 100 \
-    --delta-max 4.0 4.0 \
+    --delta-max 2.0 2.0 \
     --epsilon 0.45 \
     --relative false \
     --goal-range-low -6.0 -8.0 \

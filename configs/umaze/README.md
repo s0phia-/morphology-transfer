@@ -45,13 +45,26 @@ occurrence of a repeated flag - so a short smoke run needs no editing:
 
 ## Numbers that are a first guess, and the first things to move
 
-    --delta-max 4.0     one cell. NOT matched to HRL.SUBGOAL_RADIUS, which on our side
-                        is 0.0 = "span the maze" (31.24 on u_maze). Matching it would
-                        make the high level's action space identical but train every
-                        low level almost entirely on subgoals it cannot reach in 50
-                        steps, so the sparse term would never fire. Raise it if the
-                        high level looks starved for reach; lower it if low levels
-                        plateau.
+    --delta-max 2.0     Was one cell (4.0); measured, and lowered. The PointMass masses
+                        ~52 (r=0.5 sphere at density 100) against a peak actuator force
+                        of 75, so a ~ 1.43 u/s^2, and a 50-step episode is 3s at
+                        timestep 0.02 x FRAME_SKIP 3. Accelerate-then-brake - it has to
+                        STOP inside epsilon - covers about 3.2 units. Per-axis uniform
+                        delta_max 4.0 has mean radial distance 4 x 0.765 = 3.06, i.e.
+                        the average subgoal sat exactly at the physical limit, and
+                        scripts/eval_low.py measured the predicted result: 48% arrival,
+                        median arrival at step 32 of 50. At 2.0 the mean is 1.53 and the
+                        max 2.83, both comfortably inside the window.
+
+                        Still NOT matched to HRL.SUBGOAL_RADIUS, which on our side is
+                        0.0 = "span the maze" (31.24 on u_maze). Matching it would make
+                        the high level's action space identical at the cost of training
+                        every low level on subgoals it cannot reach, which is the same
+                        failure this measurement just found, only worse.
+
+                        It must be the SAME in all three scripts: High reads delta_max
+                        off the low level's params when not given, and DSAC's targets
+                        have to share the source's skill space.
     --reset-prob 0.2    the low level must work ANYWHERE in the maze, so most subgoal
                         episodes continue from where the last one stopped rather than
                         teleporting back to the spawn cell.

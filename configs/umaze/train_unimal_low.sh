@@ -21,7 +21,7 @@ python scripts/train.py \
     --low-level "$LOW_LEVEL" \
     --name "MazeEnd_Unimal_${WALKER}_L2Low_DSAC" \
     --seed 1409 \
-    --delta-max 4.0 4.0 \
+    --delta-max 2.0 2.0 \
     --epsilon 0.45 \
     --sparse-reward 25 \
     --reward-scale 0.1 \
