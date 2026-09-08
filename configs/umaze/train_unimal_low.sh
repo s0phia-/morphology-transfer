@@ -15,6 +15,14 @@ LOW_LEVEL=${2:?usage: $0 <walker name> <path to step 1 low level> [extra train.p
 # Both consumed, so the trailing "$@" forwards only what came after them.
 shift 2
 
+# High (wrappers.py) and DSAC (dsac.py) both resolve a NON-ABSOLUTE --low-level against
+# low_levels/, not data/ - the convention this repo's README describes for models you
+# have deliberately promoted. A path straight out of data/ is what one actually has to
+# hand, so accept it and make it absolute here rather than requiring a symlink dance.
+if [ -d "$PWD/data/$LOW_LEVEL" ]; then
+  LOW_LEVEL="$PWD/data/$LOW_LEVEL"
+fi
+
 python scripts/train.py \
     --alg DSAC \
     --env MazeEnd_Unimal \

@@ -10,6 +10,14 @@ LOW_LEVEL=${1:?usage: $0 <path to step 1 low level, e.g. 09_08_26/MazeEnd_PointM
 # train.py takes no positional arguments and rejects the leftover.
 shift
 
+# High (wrappers.py) and DSAC (dsac.py) both resolve a NON-ABSOLUTE --low-level against
+# low_levels/, not data/ - the convention this repo's README describes for models you
+# have deliberately promoted. A path straight out of data/ is what one actually has to
+# hand, so accept it and make it absolute here rather than requiring a symlink dance.
+if [ -d "$PWD/data/$LOW_LEVEL" ]; then
+  LOW_LEVEL="$PWD/data/$LOW_LEVEL"
+fi
+
 python scripts/train.py \
     --alg SAC \
     --env MazeSample_PointMass_UMaze \
