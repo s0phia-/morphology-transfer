@@ -138,8 +138,16 @@ def run_train(params, model=None, env=None, path=None):
             env = Monitor(env, data_dir + '/' + str(i), allow_early_resets=params['early_reset'], info_keywords=info_keywords)
             return env
 
-        # env = DummyVecEnv([(lambda n: lambda: make_env(n))(i) for i in range(params['num_proc'])])
-        env = make_env(0)
+        # PPO2 gains roughly linearly from parallel envs on a sparse task - it is how
+        # many rollouts you get per unit wall-clock, and on a reward that fires once in
+        # hundreds of episodes that is the difference between finding it today and
+        # tomorrow. Left OFF at num_proc 1 so the single-env path stays byte-identical
+        # for SAC, whose SB2 implementation is written against one env.
+        if params['num_proc'] and params['num_proc'] > 1:
+            env = DummyVecEnv([(lambda n: lambda: make_env(n))(i)
+                               for i in range(params['num_proc'])])
+        else:
+            env = make_env(0)
         if params['normalize']:
             env = VecNormalize(env)
     # Set the seeds

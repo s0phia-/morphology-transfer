@@ -20,7 +20,7 @@ BASE_ARGS = {
     'log_interval' : int,
     'tensorboard' : str,
     'name' : str,
-    'num_proc' : str,
+    'num_proc' : int,
     'eval_freq' : int,
     'checkpoint_freq' : int,
     'use_her' : boolean,
@@ -70,6 +70,20 @@ ALG_ARGS = {
     "batch_size": int,
     "buffer_size": int,
     "learning_starts": int,
+    # --- PPO2 (stable_baselines' own, resolved by get_alg's fallback into the
+    # stable_baselines namespace). SAC ignores every one of these and vice versa;
+    # ALG_ARGS is a flat union and each algorithm is handed only what it is given, so
+    # passing a SAC-only flag to PPO2 is a TypeError at construction, not a silent
+    # no-op. batch_size/buffer_size/learning_starts/target_entropy are SAC's;
+    # n_steps/nminibatches/noptepochs/lam/cliprange are PPO2's.
+    "n_steps": int,
+    "nminibatches": int,
+    "noptepochs": int,
+    "lam": float,
+    "cliprange": float,
+    "gamma": float,
+    "vf_coef": float,
+    "max_grad_norm": float,
     # SAC's entropy coefficient, str because SB2 accepts "auto", "auto_0.1" (auto with
     # an initial value) or a plain number like "0.2" - a float type here would reject
     # the first two. Worth having as a knob rather than always auto: on a sparse task
@@ -143,6 +157,15 @@ def train_parser():
 
 def args_to_params(args):
     params = ModelParams(args.env, args.alg)
+    # ent_coef is parsed as a str so SAC's "auto" and "auto_0.1" survive, but PPO2 needs
+    # a real number - it puts the value straight into the loss. SAC accepts a float
+    # equally well (it float()s anything not starting with "auto"), so coercing here is
+    # safe for both and keeps one flag rather than one per algorithm.
+    if getattr(args, "ent_coef", None) is not None:
+        try:
+            args.ent_coef = float(args.ent_coef)
+        except ValueError:
+            pass  # "auto" / "auto_0.1" - leave it for SAC to interpret
     for arg_name, arg_value in vars(args).items():
         if not arg_value is None:
             if arg_name in BASE_ARGS or arg_name in ("env", "alg", "env_wrapper"):
