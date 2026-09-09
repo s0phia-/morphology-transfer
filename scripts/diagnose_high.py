@@ -24,6 +24,7 @@ WHAT THE NUMBERS MEAN
                       clipped back to where it already is.
 """
 import argparse
+import inspect
 import os
 import sys
 
@@ -45,13 +46,20 @@ def main():
     args = p.parse_args()
 
     params = ModelParams.load(args.path)
-    wargs = dict(params["env_wrapper_args"])
+    # The saved args are L2Low's, and High takes a DIFFERENT set - sparse_reward,
+    # reward_scale, reset_prob and the rest belong to the low level's own reward and
+    # mean nothing here. Filter to High's real signature rather than guessing which
+    # overlap, so this keeps working if either wrapper changes.
+    accepted = set(inspect.signature(E.High.__init__).parameters) - {"self", "env"}
+    wargs = {k: v for k, v in params["env_wrapper_args"].items() if k in accepted}
     wargs["low_level"] = (args.path if args.path.startswith("/")
                           else os.path.join(os.getcwd(), "data", args.path))
-    # High takes these from the low level's own params when not given; make them explicit
-    # so this reports on exactly what the training run uses.
+    # High reads these off the low level's params when not given; set explicitly so this
+    # reports on exactly what the training run uses.
     wargs.setdefault("skip", 50)
-    print("wrapper args:", {k: v for k, v in wargs.items() if k != "low_level"})
+    dropped = sorted(set(params["env_wrapper_args"]) - accepted)
+    print("High args:", {k: v for k, v in wargs.items() if k != "low_level"})
+    print("dropped (L2Low's own):", dropped)
 
     env_kwargs = {}
     if args.asset_dir:
