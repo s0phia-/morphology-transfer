@@ -70,6 +70,15 @@ ALG_ARGS = {
     "batch_size": int,
     "buffer_size": int,
     "learning_starts": int,
+    # SAC's entropy coefficient, str because SB2 accepts "auto", "auto_0.1" (auto with
+    # an initial value) or a plain number like "0.2" - a float type here would reject
+    # the first two. Worth having as a knob rather than always auto: on a sparse task
+    # where nothing has been reached yet, auto-tuning drives it toward zero and leaves a
+    # deterministic policy with nothing driving exploration.
+    "ent_coef": str,
+    # "auto" (SB2's default, -dim(A)) or a number. Raising the target above the default
+    # is the other way to hold entropy up, and unlike a fixed ent_coef it still adapts.
+    "target_entropy": str,
     # Discrim Configuration
     "discrim_model": str,
     "discrim_buffer_size": int,

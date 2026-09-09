@@ -1,38 +1,47 @@
-# HDIMT on graph_transformer's u_maze_open
+# HDIMT on graph_transformer's u_maze
 
 Three runs, in order. Every one of them needs the exported assets first - they are not
 in this repo and cannot be built here:
 
     # in a graph_transformer checkout, on a machine with mujoco_py
     python utils/export_maze_xml.py \
-        --cfg run_configs/modumorph_worker_u_maze_open.yaml \
-        --out-dir <this repo>/bot_transfer/envs/assets/unimal_umaze_open \
+        --cfg run_configs/maze_manager_umaze100.yaml \
+        --out-dir <this repo>/bot_transfer/envs/assets/unimal_umaze \
         --walkers $(grep -hv '^#' agents/mlp_baseline/configs/sample_20_u_maze.txt | grep -v '^$') \
         --pointmass-asset <this repo>/bot_transfer/envs/assets/point_mass.xml
 
 Re-run it whenever envs/tasks/maze_maps.py or the MAZE block changes; the XMLs are a
 snapshot of that geometry, and nothing detects staleness.
 
-## Why u_maze_open and not u_maze
+## Fixed goals, and what the first attempt cost
 
 u_maze has one reset cell and one goal cell, so every episode is the same (spawn, goal)
-pair: spawn (-4, 6), goal (4, 6), ~40 units apart around the U. A sparse-reward high
-level therefore gets no signal at all until it solves the single hardest instance of the
-task. Measured, at 300k decisions: reward exactly 0, success rate 0, every episode
-hitting the 100-decision limit, and critic losses at 1e-11 - not slow learning, no
-learning signal in existence.
+pair: spawn (-4, 6), goal (4, 6), ~40 units apart around the U. That is deliberate - it
+is the task graph_transformer's own manager is scored on, so keeping it is what makes
+this a like-for-like baseline rather than a different, easier problem.
 
-u_maze_open has the SAME 21 wall cells - identical physics, byte-identical walker XMLs,
-only the manifest differs - but 9 reset cells and 9 goal cells, giving 72 ordered pairs
-with many one cell apart. That is the curriculum a sparse reward needs.
+It is also hard. The first attempt at the high level got 300k decisions at reward
+exactly 0, success rate 0, every episode hitting the 100-decision limit, critic losses
+at 1e-11 - not slow learning, no learning signal in existence - and SAC's auto-tuned
+ent_coef collapsed to 3e-9. With a sparse +100 that has never once been reached,
+auto-tuning has no reason to hold entropy up, and the deterministic policy that results
+explores nothing, so it can never find the reward that would tell it to do otherwise.
 
-It is worth being explicit that this makes the task EASIER than the one
-graph_transformer's own manager solves on u_maze, which is a deliberate concession and
-not a like-for-like comparison. The alternative was to raise delta_max instead - their
-manager runs SUBGOAL_RADIUS 0.0, maze-spanning at 31.24, and can place a subgoal on the
-goal in one decision, where delta_max 2.0 needs about 26 correct decisions in a row
-before any reward exists. That would have changed the method rather than the task. This
-route was chosen knowingly.
+The response is a held --ent-coef 0.2 and a 2M-decision budget rather than 300k. If that
+is still not enough, two levers remain, in the order I would try them:
+
+* delta_max. At 2.0 the manager needs about 26 correct decisions in a row before any
+  reward exists, where graph_transformer's own manager runs SUBGOAL_RADIUS 0.0 -
+  maze-spanning at 31.24 - and can place a subgoal on the goal in a single decision.
+  Raising it changes the METHOD, which is what a baseline is allowed to differ in, and
+  costs one low-level retrain since L2Low has to be trained on the subgoal distribution
+  High will emit.
+* u_maze_open. Same 21 walls, so identical physics and byte-identical walker XMLs, but 9
+  reset and 9 goal cells: 72 ordered pairs, many one cell apart, which is the curriculum
+  a sparse reward wants. Already exported as unimal_umaze_open; ASSET_DIR points the
+  scripts at it. This changes the TASK, and makes it easier than the one being compared
+  against, so it is the concession of last resort rather than the first thing to reach
+  for.
 
 ## 1. Source low level - `train_pointmass_low.sh`
 

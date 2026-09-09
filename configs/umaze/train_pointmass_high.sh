@@ -5,6 +5,15 @@
 # sparse +100. MazeSample (not MazeEnd) so the goal is redrawn every episode.
 #
 # --low-level is a path under data/ (or an absolute one); fill in what step 1 wrote.
+#
+# --ent-coef IS HELD, NOT AUTO-TUNED, and --timesteps is 2M rather than 300k. The first
+# attempt on this fixed-goal task got 300k decisions at reward exactly 0 with SAC's
+# auto-tuned ent_coef collapsed to 3e-9: with a sparse +100 that has never once been
+# reached, auto-tuning has no reason to keep entropy up, and the resulting deterministic
+# policy explores nothing - so it can never find the reward that would tell it to do
+# otherwise. A fixed coefficient keeps the manager stirring until something lands.
+# "auto_0.2" starts here and adapts once returns exist, which is the thing to switch to
+# if entropy stops being the binding constraint.
 LOW_LEVEL=${1:?usage: $0 <path to step 1 low level, e.g. 09_08_26/MazeEnd_PointMass_UMaze_L2Low_SAC_s1409_0> [extra train.py flags]}
 # Consumed here, so the trailing "$@" forwards only what came AFTER it -
 # train.py takes no positional arguments and rejects the leftover.
@@ -18,17 +27,22 @@ if [ -d "$PWD/data/$LOW_LEVEL" ]; then
   LOW_LEVEL="$PWD/data/$LOW_LEVEL"
 fi
 
-# Which exported maze. One directory per map: u_maze has a single reset cell and a
-# single goal cell, so every episode is the same (spawn, goal) pair and a sparse-reward
-# high level gets no signal until it solves the hardest instance there is - measured, at
-# 300k decisions: reward exactly 0, success 0, every episode hitting the 100-decision
-# limit. u_maze_open has the SAME 21 wall cells, so identical physics and byte-identical
-# walker XMLs, but 9 reset and 9 goal cells: 72 ordered pairs, many one cell apart.
-# Override with the ASSET_DIR environment variable.
+# Which exported maze. One directory per map. u_maze is a FIXED (spawn, goal) pair -
+# one reset cell at (-4, 6), one goal cell at (4, 6), ~40 units apart around the U - and
+# that is deliberate: it is the task graph_transformer's own manager is scored on, so
+# keeping it is what makes the comparison like-for-like.
+#
+# It is also hard for a sparse-reward high level, and the first attempt got nowhere:
+# 300k decisions at reward exactly 0, success 0, every episode hitting the 100-decision
+# limit, with SAC's auto-tuned ent_coef collapsed to 3e-9 - a deterministic policy with
+# nothing driving exploration. Hence --ent-coef below, and a longer --timesteps.
+#
+# unimal_umaze_open is the same 21 walls with 9 reset and 9 goal cells (72 pairs), kept
+# exported as the fallback if entropy and time are not enough. ASSET_DIR overrides.
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze_open}"
+ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze}"
 
-python scripts/train.py \
+python scripts/train_wandb.py \
     --alg SAC \
     --env MazeSample_PointMass_UMaze \
     --env-wrapper High \
@@ -45,5 +59,6 @@ python scripts/train.py \
     --learning-rate 0.0003 \
     --batch-size 256 \
     --layers 256 256 \
-    --timesteps 300000 \
+    --ent-coef 0.2 \
+    --timesteps 2000000 \
     "$@"

@@ -15,6 +15,18 @@ from bot_transfer.utils.loader import get_paths, get_env, get_alg, get_policy, s
 from bot_transfer.utils.loader import load, HIGH_LEVELS, LOW_LEVELS, ModelParams
 from bot_transfer.utils.tester import eval_policy
 
+# Optional, and deliberately not a hard dependency: scripts/train.py must keep working
+# in an environment without it. scripts/train_wandb.py is what actually calls
+# wandb.init(); everything here logs only if a run is already live.
+try:
+    import wandb as _wandb
+except ImportError:
+    _wandb = None
+
+
+def _wandb_live():
+    return _wandb is not None and _wandb.run is not None
+
 class TrainCallback(BaseCallback):
     """
     Callback for saving a model (the check is done every ``check_freq`` steps)
@@ -35,9 +47,35 @@ class TrainCallback(BaseCallback):
         self.tb_dir = tb_dir
         self.best_mean_reward = -np.inf
         self.save_path = os.path.join(data_dir, 'best_model')
+        # Training-episode logging cadence. eval_freq is 100k by default, which on a
+        # 300k-step run is three points - far too coarse to tell a dud from a slow
+        # start while it is still running, which is the whole reason for logging.
+        self.wandb_freq = 1000
+
+    def _log_training_progress(self):
+        """Mean reward/length over recent episodes, straight off the Monitor CSV.
+
+        Read from disk rather than tracked in memory because SB2's algorithms keep their
+        episode bookkeeping privately and differ between them; the CSV is the one place
+        every algorithm's episodes are recorded the same way.
+        """
+        try:
+            results = load_results(self.data_dir)
+            x, y = ts2xy(results, 'timesteps')
+        except Exception:
+            return  # no episode has finished yet, or the file is mid-write
+        if len(x) == 0:
+            return
+        _wandb.log({
+            "train/ep_rew_mean": float(np.mean(y[-100:])),
+            "train/ep_len_mean": float(np.mean(results["l"].values[-100:])),
+            "train/episodes": int(len(y)),
+            "time/total_timesteps": int(self.num_timesteps),
+        }, step=int(self.num_timesteps))
 
     def _on_step(self) -> bool:
-        # NOTE: can add custom tensorboard callbacks here if wanted to log extra materials
+        if _wandb_live() and self.n_calls % self.wandb_freq == 0:
+            self._log_training_progress()
 
         if self.n_calls % self.eval_freq == 0:
             if self.eval_env:
@@ -59,6 +97,12 @@ class TrainCallback(BaseCallback):
                 print("Num timesteps: {}".format(self.num_timesteps))
                 print("Best mean reward: {:.2f} - Last mean reward per episode: {:.2f}".format(self.best_mean_reward, mean_reward))
             
+            if _wandb_live():
+                _wandb.log({
+                    "eval/mean_reward": float(mean_reward),
+                    "eval/best_mean_reward": float(max(mean_reward, self.best_mean_reward)),
+                }, step=int(self.num_timesteps))
+
             # New best model, you could save the agent here
             if mean_reward > self.best_mean_reward:
                 self.best_mean_reward = mean_reward
