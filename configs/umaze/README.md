@@ -1,17 +1,38 @@
-# HDIMT on graph_transformer's u_maze
+# HDIMT on graph_transformer's u_maze_open
 
 Three runs, in order. Every one of them needs the exported assets first - they are not
 in this repo and cannot be built here:
 
     # in a graph_transformer checkout, on a machine with mujoco_py
     python utils/export_maze_xml.py \
-        --cfg run_configs/maze_manager_umaze100.yaml \
-        --out-dir <this repo>/bot_transfer/envs/assets/unimal_umaze \
+        --cfg run_configs/modumorph_worker_u_maze_open.yaml \
+        --out-dir <this repo>/bot_transfer/envs/assets/unimal_umaze_open \
         --walkers $(grep -hv '^#' agents/mlp_baseline/configs/sample_20_u_maze.txt | grep -v '^$') \
         --pointmass-asset <this repo>/bot_transfer/envs/assets/point_mass.xml
 
 Re-run it whenever envs/tasks/maze_maps.py or the MAZE block changes; the XMLs are a
 snapshot of that geometry, and nothing detects staleness.
+
+## Why u_maze_open and not u_maze
+
+u_maze has one reset cell and one goal cell, so every episode is the same (spawn, goal)
+pair: spawn (-4, 6), goal (4, 6), ~40 units apart around the U. A sparse-reward high
+level therefore gets no signal at all until it solves the single hardest instance of the
+task. Measured, at 300k decisions: reward exactly 0, success rate 0, every episode
+hitting the 100-decision limit, and critic losses at 1e-11 - not slow learning, no
+learning signal in existence.
+
+u_maze_open has the SAME 21 wall cells - identical physics, byte-identical walker XMLs,
+only the manifest differs - but 9 reset cells and 9 goal cells, giving 72 ordered pairs
+with many one cell apart. That is the curriculum a sparse reward needs.
+
+It is worth being explicit that this makes the task EASIER than the one
+graph_transformer's own manager solves on u_maze, which is a deliberate concession and
+not a like-for-like comparison. The alternative was to raise delta_max instead - their
+manager runs SUBGOAL_RADIUS 0.0, maze-spanning at 31.24, and can place a subgoal on the
+goal in one decision, where delta_max 2.0 needs about 26 correct decisions in a row
+before any reward exists. That would have changed the method rather than the task. This
+route was chosen knowingly.
 
 ## 1. Source low level - `train_pointmass_low.sh`
 

@@ -3,10 +3,21 @@
 # against graph_transformer's u_maze so it shares the targets' skill space.
 # Reward is the wrapper's, not the env's: L2Low discards the maze's sparse +100 and
 # pays -0.1*||subgoal - xy|| with +25 inside epsilon.
+# Which exported maze. One directory per map: u_maze has a single reset cell and a
+# single goal cell, so every episode is the same (spawn, goal) pair and a sparse-reward
+# high level gets no signal until it solves the hardest instance there is - measured, at
+# 300k decisions: reward exactly 0, success 0, every episode hitting the 100-decision
+# limit. u_maze_open has the SAME 21 wall cells, so identical physics and byte-identical
+# walker XMLs, but 9 reset and 9 goal cells: 72 ordered pairs, many one cell apart.
+# Override with the ASSET_DIR environment variable.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze_open}"
+
 python scripts/train.py \
     --alg SAC \
     --env MazeEnd_PointMass_UMaze \
     --env-wrapper L2Low \
+    --asset-dir "$ASSET_DIR" \
     --seed 1409 \
     --delta-max 2.0 2.0 \
     --epsilon 0.45 \

@@ -23,11 +23,22 @@ if [ -d "$PWD/data/$LOW_LEVEL" ]; then
   LOW_LEVEL="$PWD/data/$LOW_LEVEL"
 fi
 
+# Which exported maze. One directory per map: u_maze has a single reset cell and a
+# single goal cell, so every episode is the same (spawn, goal) pair and a sparse-reward
+# high level gets no signal until it solves the hardest instance there is - measured, at
+# 300k decisions: reward exactly 0, success 0, every episode hitting the 100-decision
+# limit. u_maze_open has the SAME 21 wall cells, so identical physics and byte-identical
+# walker XMLs, but 9 reset and 9 goal cells: 72 ordered pairs, many one cell apart.
+# Override with the ASSET_DIR environment variable.
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze_open}"
+
 python scripts/train.py \
     --alg DSAC \
     --env MazeEnd_Unimal \
     --walker "$WALKER" \
     --env-wrapper L2Low \
+    --asset-dir "$ASSET_DIR" \
     --low-level "$LOW_LEVEL" \
     --name "MazeEnd_Unimal_${WALKER}_L2Low_DSAC" \
     --seed 1409 \
