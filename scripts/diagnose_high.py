@@ -43,6 +43,15 @@ def main():
     p.add_argument("--episodes", "-e", type=int, default=20)
     p.add_argument("--env", default="MazeSample_PointMass_UMaze")
     p.add_argument("--asset-dir", default=None)
+    p.add_argument(
+        "--delta-max", type=float, default=None, nargs="+",
+        help="override the low level's own delta_max, i.e. how far a manager action can "
+             "place a subgoal. Give several to sweep. No retraining is needed to try "
+             "this: High simply runs the low level for `skip` steps toward whatever it "
+             "is given, so a subgoal further than the low level was trained on is "
+             "chased rather than reached - which is exactly how graph_transformer's own "
+             "manager works at SUBGOAL_RADIUS 0.0 (maze-spanning, 31.24 on u_maze).",
+    )
     args = p.parse_args()
 
     params = ModelParams.load(args.path)
@@ -61,18 +70,28 @@ def main():
     print("High args:", {k: v for k, v in wargs.items() if k != "low_level"})
     print("dropped (L2Low's own):", dropped)
 
+    sweep = args.delta_max or [None]
+
     env_kwargs = {}
     if args.asset_dir:
         env_kwargs["asset_dir"] = args.asset_dir
     base = vars(E)[args.env](**env_kwargs)
-    env = E.High(base, **wargs)
+    print("goal", np.round(np.asarray(base.center_goal), 2),
+          " spawn cell", base._spawn_cell, " tolerance", base.goal_tolerance)
 
+    for dmax in sweep:
+        if dmax is not None:
+            wargs["delta_max"] = [dmax, dmax]
+        run(base, wargs, args.episodes, dmax)
+
+
+def run(base, wargs, episodes, dmax):
+    env = E.High(base, **wargs)
     goal = np.asarray(base.center_goal, dtype=np.float64)
-    print("goal", np.round(goal, 2), " spawn cell", base._spawn_cell,
-          " tolerance", base.goal_tolerance, "\n")
+    print("\n--- delta_max %s ---" % (dmax if dmax is not None else "as trained"))
 
     rows = []
-    for ep in range(args.episodes):
+    for ep in range(episodes):
         obs = env.reset()
         start = base.torso_xy().copy()
         moved = asked = 0.0
@@ -99,7 +118,7 @@ def main():
     print("\n%d episodes: moved/asked %.2f   closest approach %.2f (tolerance %.2f)"
           "   reached %d" % (len(rows), moved.sum() / max(asked.sum(), 1e-9),
                              best.min(), base.goal_tolerance, done.sum()))
-    print("simulated expectation for a random manager on this maze: ~1 episode in 3")
+    return rows
 
 
 if __name__ == "__main__":
