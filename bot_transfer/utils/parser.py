@@ -70,6 +70,14 @@ ALG_ARGS = {
     "batch_size": int,
     "buffer_size": int,
     "learning_starts": int,
+    # SAC's update schedule. gradient_steps is how many updates run per train_freq env
+    # steps, and it is the lever that matters on a reward this sparse: one success per
+    # 100 episodes is about one rewarding transition in 10,000, so most updates never
+    # sample one, and raising this raises how often each rare success is replayed
+    # without needing more environment interaction.
+    "train_freq": int,
+    "gradient_steps": int,
+    "tau": float,
     # --- PPO2 (stable_baselines' own, resolved by get_alg's fallback into the
     # stable_baselines namespace). SAC ignores every one of these and vice versa;
     # ALG_ARGS is a flat union and each algorithm is handed only what it is given, so
