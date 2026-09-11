@@ -57,7 +57,17 @@ python scripts/train_wandb.py \
     --goal-range-high 6.0 8.0 \
     --reset-prob 0.2 \
     --reset-free-limit 10 \
-    --time-limit 50 \
+    # 200, not the PointMass's 50. A unimal step is 0.005s x FRAME_SKIP 4 = 0.02s; the
+    # PointMass's is 0.02s x 3 = 0.06s, so the same step count buys a THIRD of the
+    # simulated time. On top of that these bodies are slow: measured over 100 walkers on
+    # graph_transformer's maze tasks the median is ~0.5 units/s, and a subgoal drawn
+    # uniformly on the +-delta_max square averages 1.53 units away - about 153 steps just
+    # to arrive. At 50 the body reached the goal around step 46 of 50 and banked almost
+    # none of the sparse reward, which is what a run topping out near 100 against a 1250
+    # ceiling looks like. 200 leaves a median body ~47 steps of reward after arrival.
+    # Slow bodies (p10, 0.38 units/s) need ~201 and still score near zero; raising this
+    # further costs episodes, since the timestep budget is fixed.
+    --time-limit 200 \
     --learning-rate 0.0003 \
     --batch-size 256 \
     --buffer-size 1000000 \
