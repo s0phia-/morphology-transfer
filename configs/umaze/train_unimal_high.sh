@@ -10,8 +10,24 @@
 # INITIALISATION and as the regulariser, and what this measures is how much adaptation a
 # body needs on top of a manager that already solves the task for a point mass.
 #
-# --alg SAC instead gets Case 4 - the same finetune with no KL term, which is the
-# ablation for whether the regularisation is doing anything.
+# WHAT IS THE AUTHORS' AND WHAT IS NOT
+# Copied from their own configs/sawyer/train_high_kl.sh: --kl-coef 0.001, --kl-decay
+# true, --learning-starts 100, --learning-rate 0.001, --timesteps 300000, --best true.
+#
+# Forced by this task rather than chosen: --env/--walker (MazeSample_Unimal is this
+# project's env), the task block below, and --layers/--batch-size, which have to match
+# the step 2 policy being loaded.
+#
+# Two deliberate departures, both recorded here so neither is mistaken for the method:
+#   --alg KLSAC   their sawyer script says --alg SAC while passing --kl-coef. That
+#                 cannot work: kl_coef/kl_decay exist only on KLSAC.__init__, and
+#                 trainer.py routes to the KL case on `alg in kl_algs` = ["KLSAC"].
+#                 With --alg SAC it would take Case 4 and then hand SAC a kl_coef it
+#                 does not accept. KLSAC is what their script means.
+#   --ent-coef    they pass none, leaving SAC to auto-tune. On u_maze's fixed goal pair
+#                 auto-tuning collapsed to 3e-9 against a reward never once seen, which
+#                 is why step 2 holds 0.2. Carried here so the finetune starts from the
+#                 same exploration regime the policy was trained under.
 #
 # WHY THE TASK BLOCK MUST MATCH STEP 2 EXACTLY
 # --skip, --time-limit, --delta-max, --epsilon and --goal-range-* define the skill space
@@ -63,11 +79,12 @@ python scripts/train_wandb.py \
     --relative false \
     --goal-range-low -6.0 -8.0 \
     --goal-range-high 6.0 8.0 \
-    --learning-rate 0.0003 \
+    --learning-rate 0.001 \
     --batch-size 256 \
     --layers 256 256 \
+    --learning-starts 100 \
     --ent-coef 0.2 \
     --kl-coef 0.001 \
     --kl-decay true \
-    --timesteps 500000 \
+    --timesteps 300000 \
     "$@"
