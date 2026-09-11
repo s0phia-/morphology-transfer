@@ -1,5 +1,5 @@
 #!/bin/bash
-# All three umaze steps in order, resolving each one's output directory for the next.
+# All four umaze steps in order, resolving each one's output directory for the next.
 #
 #   ./configs/umaze/run_all.sh
 #
@@ -20,8 +20,8 @@
 # ENV OVERRIDES
 #   WALKERS   space-separated walker names for step 3 (default: every walker in the
 #             asset manifest, which is the set the XMLs actually exist for)
-#   SKIP1/2/3 set to 1 to skip a step, e.g. SKIP1=1 SKIP2=1 to resume at step 3 using
-#             whatever step 1 output is already newest
+#   SKIP1..4  set to 1 to skip a step, e.g. SKIP1=1 SKIP2=1 to resume at step 3 using
+#             whatever step 1 and 2 output is already newest
 #   ASSET_DIR forwarded to each step's own script
 #
 # Trailing arguments are forwarded to EVERY step, so use them only for things all three
@@ -91,6 +91,33 @@ if [ "${SKIP3:-0}" != "1" ]; then
     done
     if [ ${#failed[@]} -gt 0 ]; then
         echo; echo "step 3 failed for ${#failed[@]} walker(s): ${failed[*]}" >&2
+        exit 1
+    fi
+fi
+
+if [ "${SKIP4:-0}" != "1" ]; then
+    MANIFEST4="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze}/manifest.json"
+    WALKERS4="${WALKERS:-$(python -c "import json;print(' '.join(json.load(open('$MANIFEST4'))['walkers']))")}"
+    read -r -a WALKER_LIST4 <<< "$WALKERS4"
+    HIGH=$(latest_run MazeSample_PointMass_UMaze_High_SAC)
+    banner "STEP 4  KL-finetune the source high level per morphology (${#WALKER_LIST4[@]} walkers)"
+    echo "source high level: data/$HIGH"
+    failed4=()
+    for W in "${WALKER_LIST4[@]}"; do
+        # Each walker's OWN step 3 output, looked up rather than assumed: the index in a
+        # run directory's name depends on what already existed when it started, so the
+        # nth walker is not the nth directory.
+        if ! WLOW=$(latest_run "MazeEnd_Unimal_${W}_L2Low_DSAC"); then
+            failed4+=("$W"); echo "WARNING: no step 3 output for $W - skipping" >&2; continue
+        fi
+        banner "STEP 4  $W"
+        if ! ./configs/umaze/train_unimal_high.sh "$W" "$WLOW" "$HIGH" ${EXTRA[@]+"${EXTRA[@]}"}; then
+            failed4+=("$W")
+            echo "WARNING: step 4 failed for $W - continuing" >&2
+        fi
+    done
+    if [ ${#failed4[@]} -gt 0 ]; then
+        echo; echo "step 4 failed for ${#failed4[@]} walker(s): ${failed4[*]}" >&2
         exit 1
     fi
 fi
