@@ -26,7 +26,15 @@ fi
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze}"
 
-python scripts/train_wandb.py \
+# WHICH TRAINING ENTRY POINT
+# scripts/train_wandb.py by default; TRAIN_SCRIPT=scripts/train.py drops wandb entirely.
+# Needed because wandb's service socket has hung indefinitely on this cluster - the same
+# run reaches ~200 steps/s through train.py and zero episodes in 25 hours through
+# train_wandb.py, in online AND offline mode. The Monitor CSV in the run directory
+# (0.monitor.csv: reward, length, wall-clock per episode) carries everything the wandb
+# training curves did, so nothing is lost but the live view.
+TRAIN_SCRIPT="${TRAIN_SCRIPT:-scripts/train_wandb.py}"
+python "$TRAIN_SCRIPT" \
     --alg PPO2 \
     --env MazeSample_PointMass_UMaze \
     --env-wrapper High \

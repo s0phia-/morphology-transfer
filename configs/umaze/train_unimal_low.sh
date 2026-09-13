@@ -51,7 +51,15 @@ ASSET_DIR="${ASSET_DIR:-$REPO/bot_transfer/envs/assets/unimal_umaze}"
 # backslash-continued invocation below: the continuation runs into the '#', which
 # comments out the rest of that logical line and leaves the next flag to be parsed as a
 # command of its own. bash -n does not catch it - it is valid syntax, wrong meaning.
-python scripts/train_wandb.py \
+# WHICH TRAINING ENTRY POINT
+# scripts/train_wandb.py by default; TRAIN_SCRIPT=scripts/train.py drops wandb entirely.
+# Needed because wandb's service socket has hung indefinitely on this cluster - the same
+# run reaches ~200 steps/s through train.py and zero episodes in 25 hours through
+# train_wandb.py, in online AND offline mode. The Monitor CSV in the run directory
+# (0.monitor.csv: reward, length, wall-clock per episode) carries everything the wandb
+# training curves did, so nothing is lost but the live view.
+TRAIN_SCRIPT="${TRAIN_SCRIPT:-scripts/train_wandb.py}"
+python "$TRAIN_SCRIPT" \
     --alg DSAC \
     --env MazeEnd_Unimal \
     --walker "$WALKER" \
