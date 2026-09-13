@@ -1,7 +1,12 @@
 #!/bin/bash
 # All four stages end to end on ONE walker at 1/1000 scale, in a couple of minutes.
 #
-#   ./configs/umaze/smoke.sh [walker]
+#   ./configs/umaze/smoke.sh [walker] [extra flags forwarded to every stage]
+#
+# e.g. on a different exported map:
+#   ASSET_DIR=$PWD/bot_transfer/envs/assets/unimal_step_maze_2 \
+#     ./configs/umaze/smoke.sh floor-1409-10-3-01-15-34-29 \
+#       --goal-range-low -6.0 -6.0 --goal-range-high 6.0 6.0
 #
 # Tests the wiring, not the learning: that each stage starts, that stage 2 can load
 # stage 1, that stage 3 can load stage 1 as its discriminator source, and that stage 4
@@ -22,12 +27,17 @@
 # stage, so this cannot go much below two minutes however small the budgets get.
 set -uo pipefail
 WALKER="${1:-floor-1409-10-3-01-15-34-29}"
+# Consumed, so "$@" below carries only what came after it. Guarded because shift on an
+# empty argument list is an error.
+[ $# -gt 0 ] && shift
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
 echo "smoke: $WALKER"
 start=$(date +%s)
-WALKERS="$WALKER" ./configs/umaze/run_all.sh --timesteps 500 --eval-freq 1000000
+# Extra flags last: argparse takes the final occurrence, so a caller can override the
+# budgets above as well as add to them.
+WALKERS="$WALKER" ./configs/umaze/run_all.sh --timesteps 500 --eval-freq 1000000 "$@"
 rc=$?
 elapsed=$(( $(date +%s) - start ))
 
