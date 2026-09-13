@@ -32,6 +32,17 @@ set -euo pipefail
 # an empty set does not trip set -u on bash before 4.4.
 EXTRA=("$@")
 
+# wandb's service socket hangs indefinitely on this cluster: the same DSAC command
+# reaches ~200 steps/s through scripts/train.py and wrote zero episodes in 25 hours
+# through scripts/train_wandb.py - in online AND offline mode, so it is the socket rather
+# than the network sync. Forcing the legacy in-process path costs ~40% on a 2000-step
+# smoke run and works. Export it yourself to override; TRAIN_SCRIPT=scripts/train.py
+# drops wandb altogether if even this fails.
+export WANDB_DISABLE_SERVICE="${WANDB_DISABLE_SERVICE:-true}"
+# The 20-episode progress tables are block-buffered under redirection otherwise, which
+# makes a working run look identical to a hung one.
+export PYTHONUNBUFFERED="${PYTHONUNBUFFERED:-1}"
+
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO"
 
